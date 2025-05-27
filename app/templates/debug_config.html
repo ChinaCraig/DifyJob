@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配置变更检测调试</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <div class="container mt-4">
+        <h2>配置变更检测调试</h2>
+        
+        <div id="debugLog" class="alert alert-info">
+            <h5>调试日志:</h5>
+            <div id="logContent"></div>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <h5>模拟配置表单</h5>
+                <div class="mb-3">
+                    <label for="intervalMinutes" class="form-label">执行间隔 (分钟)</label>
+                    <input type="number" class="form-control" id="intervalMinutes" value="1" min="1">
+                </div>
+                <div class="mb-3">
+                    <label for="difyApiKey" class="form-label">Dify API Key</label>
+                    <input type="text" class="form-control" id="difyApiKey" value="">
+                </div>
+                <div class="mb-3">
+                    <label for="difyUrl" class="form-label">Dify API URL</label>
+                    <input type="url" class="form-control" id="difyUrl" value="">
+                </div>
+                
+                <div class="btn-group">
+                    <button type="button" class="btn btn-success" id="startTaskBtn">启动任务</button>
+                    <button type="button" class="btn btn-warning" id="executeNowBtn">立即执行</button>
+                    <button type="button" class="btn btn-secondary" id="clearLogBtn">清空日志</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 调试日志函数
+        function debugLog(message) {
+            console.log(message);
+            const logContent = document.getElementById('logContent');
+            const timestamp = new Date().toLocaleTimeString();
+            logContent.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+        
+        // 配置变更检测变量
+        let originalConfig = null;
+        let hasUnsavedChanges = false;
+        
+        // 检查配置是否有未保存的变更
+        function checkConfigChanges() {
+            debugLog('🔍 开始检查配置变更');
+            
+            if (!originalConfig) {
+                debugLog('❌ originalConfig 为空，返回 false');
+                return false;
+            }
+            
+            debugLog('✅ originalConfig 存在: ' + JSON.stringify(originalConfig));
+            
+            // 安全获取DOM元素
+            const intervalElement = document.getElementById('intervalMinutes');
+            const apiKeyElement = document.getElementById('difyApiKey');
+            const urlElement = document.getElementById('difyUrl');
+            
+            if (!intervalElement || !apiKeyElement || !urlElement) {
+                debugLog('❌ DOM元素获取失败');
+                return false;
+            }
+            
+            const currentFormData = {
+                interval_minutes: parseInt(intervalElement.value) || 0,
+                dify_api_key: apiKeyElement.value || '',
+                dify_url: urlElement.value || ''
+            };
+            
+            debugLog('📋 当前表单数据: ' + JSON.stringify(currentFormData));
+            
+            hasUnsavedChanges = (
+                currentFormData.interval_minutes !== originalConfig.interval_minutes ||
+                currentFormData.dify_api_key !== (originalConfig.dify_api_key || '') ||
+                currentFormData.dify_url !== (originalConfig.dify_url || '')
+            );
+            
+            debugLog('🔄 是否有变更: ' + hasUnsavedChanges);
+            
+            if (hasUnsavedChanges) {
+                debugLog('📝 变更详情:');
+                if (currentFormData.interval_minutes !== originalConfig.interval_minutes) {
+                    debugLog(`  - 间隔: ${originalConfig.interval_minutes} → ${currentFormData.interval_minutes}`);
+                }
+                if (currentFormData.dify_api_key !== (originalConfig.dify_api_key || '')) {
+                    debugLog(`  - API Key: "${originalConfig.dify_api_key || ''}" → "${currentFormData.dify_api_key}"`);
+                }
+                if (currentFormData.dify_url !== (originalConfig.dify_url || '')) {
+                    debugLog(`  - URL: "${originalConfig.dify_url || ''}" → "${currentFormData.dify_url}"`);
+                }
+            }
+            
+            return hasUnsavedChanges;
+        }
+        
+        // 显示未保存配置的提示
+        function showUnsavedConfigAlert() {
+            debugLog('⚠️ 显示未保存配置提示');
+            alert('请先保存配置后再执行此操作');
+        }
+        
+        // 启动任务按钮事件
+        document.getElementById('startTaskBtn').addEventListener('click', function() {
+            debugLog('🚀 启动任务按钮被点击');
+            
+            try {
+                if (checkConfigChanges()) {
+                    debugLog('🛑 检测到配置变更，显示提示');
+                    showUnsavedConfigAlert();
+                    return;
+                }
+                debugLog('✅ 配置检查通过，可以启动任务');
+                alert('配置检查通过，可以启动任务！');
+            } catch (error) {
+                debugLog('❌ 异常: ' + error.message);
+                console.error('启动任务异常:', error);
+            }
+        });
+        
+        // 立即执行按钮事件
+        document.getElementById('executeNowBtn').addEventListener('click', function() {
+            debugLog('⚡ 立即执行按钮被点击');
+            
+            try {
+                if (checkConfigChanges()) {
+                    debugLog('🛑 检测到配置变更，显示提示');
+                    showUnsavedConfigAlert();
+                    return;
+                }
+                debugLog('✅ 配置检查通过，可以立即执行');
+                alert('配置检查通过，可以立即执行！');
+            } catch (error) {
+                debugLog('❌ 异常: ' + error.message);
+                console.error('立即执行异常:', error);
+            }
+        });
+        
+        // 清空日志按钮
+        document.getElementById('clearLogBtn').addEventListener('click', function() {
+            document.getElementById('logContent').innerHTML = '';
+        });
+        
+        // 页面加载时获取配置
+        window.addEventListener('load', function() {
+            debugLog('📄 页面加载完成，开始获取配置');
+            
+            axios.get('/api/config')
+                .then(function(response) {
+                    const config = response.data;
+                    debugLog('✅ 成功获取配置: ' + JSON.stringify(config));
+                    
+                    originalConfig = {
+                        interval_minutes: config.interval_minutes,
+                        dify_api_key: config.dify_api_key || '',
+                        dify_url: config.dify_url || ''
+                    };
+                    
+                    debugLog('💾 初始化 originalConfig: ' + JSON.stringify(originalConfig));
+                    
+                    // 更新输入框
+                    document.getElementById('intervalMinutes').value = config.interval_minutes;
+                    document.getElementById('difyApiKey').value = config.dify_api_key || '';
+                    document.getElementById('difyUrl').value = config.dify_url || '';
+                    
+                    debugLog('🔄 表单已更新为当前配置');
+                })
+                .catch(function(error) {
+                    debugLog('❌ 获取配置失败: ' + error.message);
+                    console.error('获取配置失败:', error);
+                });
+        });
+        
+        // 为输入框添加变更监听
+        document.addEventListener('DOMContentLoaded', function() {
+            debugLog('🎯 DOMContentLoaded 事件触发');
+            
+            const configInputs = ['intervalMinutes', 'difyApiKey', 'difyUrl'];
+            configInputs.forEach(inputId => {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.addEventListener('input', function() {
+                        debugLog(`📝 输入框变更: ${inputId} = "${input.value}"`);
+                    });
+                    input.addEventListener('change', function() {
+                        debugLog(`🔄 输入框值改变: ${inputId} = "${input.value}"`);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

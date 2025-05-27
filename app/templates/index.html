@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- 任务配置 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> 任务配置</h5>
+            </div>
+            <div class="card-body">
+                <form id="configForm">
+                    <div class="mb-3">
+                        <label for="intervalMinutes" class="form-label">执行间隔 (分钟)</label>
+                        <input type="number" class="form-control" id="intervalMinutes" 
+                               value="{{ config.interval_minutes }}" min="1" required
+                               {% if config.is_active %}disabled{% endif %}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="difyApiKey" class="form-label">Dify API Key</label>
+                        <input type="text" class="form-control" id="difyApiKey" 
+                               value="{{ config.dify_api_key or '' }}" required
+                               {% if config.is_active %}disabled{% endif %}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="difyUrl" class="form-label">Dify API URL</label>
+                        <input type="url" class="form-control" id="difyUrl" 
+                               value="{{ config.dify_url }}" required
+                               {% if config.is_active %}disabled{% endif %}>
+                    </div>
+                    <button type="submit" class="btn btn-primary" 
+                            {% if config.is_active %}disabled{% endif %}>
+                        <i class="bi bi-check"></i> 保存配置
+                    </button>
+                    {% if config.is_active %}
+                    <div class="form-text text-warning">
+                        <i class="bi bi-exclamation-triangle"></i> 任务运行中，请先停止任务后再修改配置
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务控制 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-play-circle"></i> 任务控制</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">任务状态</label>
+                    <div class="d-flex align-items-center">
+                        <span class="badge {% if config.is_active %}bg-success{% else %}bg-secondary{% endif %} me-2">
+                            {% if config.is_active %}运行中{% else %}已停止{% endif %}
+                        </span>
+                        {% if config.last_end_time %}
+                        <small class="text-muted">最后结束时间: {{ config.last_end_time.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="startTime" class="form-label">指定开始时间 (可选)</label>
+                    <input type="datetime-local" class="form-control" id="startTime">
+                    <div class="form-text">留空则使用最后结束时间作为开始时间</div>
+                </div>
+
+                <div class="btn-group-sm" role="group">
+                    <button type="button" class="btn btn-success" id="startTaskBtn" 
+                            {% if config.is_active %}disabled{% endif %}>
+                        <i class="bi bi-play"></i> 启动任务
+                    </button>
+                    <button type="button" class="btn btn-danger" id="stopTaskBtn" 
+                            {% if not config.is_active %}disabled{% endif %}>
+                        <i class="bi bi-stop"></i> 停止任务
+                    </button>
+                    <button type="button" class="btn btn-warning" id="executeNowBtn">
+                        <i class="bi bi-lightning"></i> 立即执行
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 消息提示区域 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div id="alertContainer"></div>
+    </div>
+</div>
+
+<!-- 最近日志 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> 最近执行日志</h5>
+                <a href="{{ url_for('main.logs') }}" class="btn btn-sm btn-outline-primary">
+                    查看全部日志
+                </a>
+            </div>
+            <div class="card-body">
+                {% if logs %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>执行时间</th>
+                                <th>时间范围</th>
+                                <th>间隔(分钟)</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td>{{ log.execute_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>
+                                    <small>
+                                        {{ log.start_time.strftime('%H:%M:%S') }} - 
+                                        {{ log.end_time.strftime('%H:%M:%S') }}
+                                    </small>
+                                </td>
+                                <td>{{ log.interval_minutes }}</td>
+                                <td>
+                                    <span class="badge {% if log.status == 'success' %}bg-success{% else %}bg-danger{% endif %}">
+                                        {% if log.status == 'success' %}成功{% else %}失败{% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-info" 
+                                            onclick="showLogDetail({{ log.id }})">
+                                        详情
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                    <p class="mt-2">暂无执行日志</p>
+                </div>
+                {% endif %}
+                
+                <!-- 分页控件 - 始终存在，通过JavaScript控制显示 -->
+                <div class="d-flex justify-content-between align-items-center mt-3" id="paginationWrapper" style="display: none;">
+                    <div class="text-muted" id="paginationStats">
+                        <!-- 统计信息将通过JavaScript更新 -->
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="logsPagination">
+                            <!-- 分页按钮将通过JavaScript动态生成 -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志详情模态框 -->
+<div class="modal fade" id="logDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">执行日志详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="logDetailContent">
+                <!-- 日志详情内容 -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded 事件触发');
+    
+    // 初始化获取配置并开始自动刷新
+    refreshPageData().then(() => {
+        console.log('配置数据加载完成，开始添加事件监听器');
+        
+        // 在配置加载完成后再添加配置输入框变更监听
+        const configInputs = ['intervalMinutes', 'difyApiKey', 'difyUrl'];
+        configInputs.forEach(inputId => {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.addEventListener('input', function() {
+                    console.log('输入框变更:', inputId);
+                    checkConfigChanges();
+                });
+                input.addEventListener('change', function() {
+                    console.log('输入框值改变:', inputId);
+                    checkConfigChanges();
+                });
+            }
+        });
+        
+        startAutoRefresh();
+    }).catch(error => {
+        console.error('初始化失败:', error);
+    });
+});
+
+// 显示消息
+function showAlert(message, type = 'info') {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    document.getElementById('alertContainer').innerHTML = alertHtml;
+    
+    // 3秒后自动消失
+    setTimeout(() => {
+        const alert = document.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 3000);
+}
+
+// 保存配置
+document.getElementById('configForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const data = {
+        interval_minutes: parseInt(document.getElementById('intervalMinutes').value),
+        dify_api_key: document.getElementById('difyApiKey').value,
+        dify_url: document.getElementById('difyUrl').value
+    };
+    
+    try {
+        const response = await axios.post('/api/config', data);
+        if (response.data.success) {
+            showAlert('配置保存成功', 'success');
+            // 重置变更标记
+            hasUnsavedChanges = false;
+            originalConfig = { ...data };
+            // 保存成功后刷新页面以显示最新配置
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('配置保存失败: ' + response.data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('配置保存失败: ' + error.message, 'danger');
+    }
+});
+
+// 启动任务
+document.getElementById('startTaskBtn').addEventListener('click', function() {
+    console.log('启动任务按钮被点击');
+    
+    try {
+        // 检查是否有未保存的配置变更
+        console.log('开始检查配置变更');
+        if (checkConfigChanges()) {
+            console.log('检测到配置变更，显示提示');
+            showUnsavedConfigAlert();
+            return;
+        }
+        console.log('配置检查通过，继续启动任务');
+        
+        const startTime = document.getElementById('startTime').value;
+        const data = {};
+        
+        if (startTime) {
+            data.start_time = startTime.replace('T', ' ') + ':00';
+        }
+        
+        console.log('发送启动任务请求:', data);
+        
+        // 使用Promise方式而不是async/await
+        axios.post('/api/task/start', data)
+            .then(function(response) {
+                console.log('启动任务响应:', response.data);
+                if (response.data.success) {
+                    showAlert('任务启动成功', 'success');
+                    // 立即刷新一次数据
+                    refreshPageData();
+                    // 1秒后重新加载页面以确保状态同步
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert('任务启动失败: ' + response.data.message, 'danger');
+                }
+            })
+            .catch(function(error) {
+                console.error('启动任务异常:', error);
+                showAlert('任务启动失败: ' + error.message, 'danger');
+            });
+            
+    } catch (error) {
+        console.error('启动任务异常:', error);
+        showAlert('任务启动失败: ' + error.message, 'danger');
+    }
+});
+
+// 停止任务
+document.getElementById('stopTaskBtn').addEventListener('click', async () => {
+    try {
+        const response = await axios.post('/api/task/stop');
+        if (response.data.success) {
+            showAlert('任务停止成功', 'success');
+            // 立即刷新一次数据
+            refreshPageData();
+            // 1秒后重新加载页面以确保状态同步
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('任务停止失败: ' + response.data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('任务停止失败: ' + error.message, 'danger');
+    }
+});
+
+// 立即执行
+document.getElementById('executeNowBtn').addEventListener('click', function() {
+    console.log('立即执行按钮被点击');
+    
+    try {
+        // 检查是否有未保存的配置变更
+        console.log('开始检查配置变更');
+        if (checkConfigChanges()) {
+            console.log('检测到配置变更，显示提示');
+            showUnsavedConfigAlert();
+            return;
+        }
+        console.log('配置检查通过，继续立即执行');
+        
+        // 使用Promise方式而不是async/await
+        axios.post('/api/task/execute')
+            .then(function(response) {
+                console.log('立即执行响应:', response.data);
+                if (response.data.success) {
+                    showAlert('任务执行完成', 'success');
+                    // 立即刷新一次数据
+                    refreshPageData();
+                    // 2秒后重新加载页面以确保状态同步
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showAlert('任务执行失败: ' + response.data.message, 'danger');
+                }
+            })
+            .catch(function(error) {
+                console.error('立即执行异常:', error);
+                showAlert('任务执行失败: ' + error.message, 'danger');
+            });
+            
+    } catch (error) {
+        console.error('立即执行异常:', error);
+        showAlert('任务执行失败: ' + error.message, 'danger');
+    }
+});
+
+// 动态刷新配置
+let refreshInterval = null;
+let isPageVisible = true;
+let currentConfig = null;
+let currentLogsPage = 1;
+let logsPerPage = 10;
+
+// 配置变更检测
+let originalConfig = null;
+let hasUnsavedChanges = false;
+
+// 检查配置是否有未保存的变更
+function checkConfigChanges() {
+    if (!originalConfig) {
+        return false;
+    }
+    
+    // 安全获取DOM元素
+    const intervalElement = document.getElementById('intervalMinutes');
+    const apiKeyElement = document.getElementById('difyApiKey');
+    const urlElement = document.getElementById('difyUrl');
+    
+    if (!intervalElement || !apiKeyElement || !urlElement) {
+        return false;
+    }
+    
+    const currentFormData = {
+        interval_minutes: parseInt(intervalElement.value) || 0,
+        dify_api_key: apiKeyElement.value || '',
+        dify_url: urlElement.value || ''
+    };
+    
+    hasUnsavedChanges = (
+        currentFormData.interval_minutes !== originalConfig.interval_minutes ||
+        currentFormData.dify_api_key !== (originalConfig.dify_api_key || '') ||
+        currentFormData.dify_url !== (originalConfig.dify_url || '')
+    );
+    
+    return hasUnsavedChanges;
+}
+
+// 显示未保存配置的提示
+function showUnsavedConfigAlert() {
+    showAlert('请先保存配置后再执行此操作', 'warning');
+}
+
+// 页面可见性检测
+document.addEventListener('visibilitychange', function() {
+    isPageVisible = !document.hidden;
+    if (isPageVisible) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
+});
+
+// 获取最优刷新间隔（毫秒）
+function getOptimalRefreshInterval(taskIntervalMinutes) {
+    // 基础刷新间隔 = 任务执行间隔
+    // 因为新日志只在任务执行时产生，所以没必要更频繁地刷新
+    return taskIntervalMinutes * 60 * 1000;
+}
+
+// 检查是否接近任务执行时间
+function isNearTaskExecution(config) {
+    if (!config || !config.is_active || !config.last_end_time) {
+        return false;
+    }
+    
+    const lastEndTime = new Date(config.last_end_time);
+    const nextExecutionTime = new Date(lastEndTime.getTime() + config.interval_minutes * 60 * 1000);
+    const now = new Date();
+    const timeUntilExecution = nextExecutionTime.getTime() - now.getTime();
+    
+    // 在任务执行前30秒到执行后10秒之间，进行加速刷新
+    return timeUntilExecution <= 30 * 1000 && timeUntilExecution >= -10 * 1000;
+}
+
+// 刷新页面数据
+async function refreshPageData() {
+    if (!isPageVisible) return;
+    
+    try {
+        // 获取最新配置
+        const configResponse = await axios.get('/api/config');
+        currentConfig = configResponse.data;
+        
+        // 获取最新日志
+        const logsResponse = await axios.get(`/api/logs?page=${currentLogsPage}&per_page=${logsPerPage}`);
+        const logs = logsResponse.data.logs;
+        const logsPagination = logsResponse.data;
+        
+        // 更新任务状态显示
+        updateTaskStatus(currentConfig);
+        
+        // 更新日志表格
+        updateLogsTable(logs);
+        
+        // 更新分页控件
+        updateLogsPagination(logsPagination);
+        
+        // 根据当前状态调整刷新间隔
+        adjustRefreshInterval();
+        
+    } catch (error) {
+        console.error('刷新数据失败:', error);
+    }
+}
+
+// 更新任务状态显示
+function updateTaskStatus(config) {
+    const statusBadge = document.querySelector('.badge');
+    const lastEndTimeElement = document.querySelector('.text-muted');
+    const startBtn = document.getElementById('startTaskBtn');
+    const stopBtn = document.getElementById('stopTaskBtn');
+    
+    if (statusBadge) {
+        statusBadge.className = `badge ${config.is_active ? 'bg-success' : 'bg-secondary'} me-2`;
+        statusBadge.textContent = config.is_active ? '运行中' : '已停止';
+    }
+    
+    if (lastEndTimeElement && config.last_end_time) {
+        const lastEndTime = new Date(config.last_end_time);
+        lastEndTimeElement.textContent = `最后结束时间: ${lastEndTime.toLocaleString()}`;
+    }
+    
+    // 更新按钮状态
+    if (startBtn) startBtn.disabled = config.is_active;
+    if (stopBtn) stopBtn.disabled = !config.is_active;
+    
+    // 更新配置表单状态
+    const inputs = document.querySelectorAll('#configForm input, #configForm button');
+    inputs.forEach(input => {
+        input.disabled = config.is_active;
+    });
+    
+    // 更新警告提示
+    const warningDiv = document.querySelector('.form-text.text-warning');
+    if (config.is_active && !warningDiv) {
+        const form = document.getElementById('configForm');
+        const warning = document.createElement('div');
+        warning.className = 'form-text text-warning';
+        warning.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 任务运行中，请先停止任务后再修改配置';
+        form.appendChild(warning);
+    } else if (!config.is_active && warningDiv) {
+        warningDiv.remove();
+    }
+    
+    // 初始化原始配置（仅在第一次时）
+    if (!originalConfig) {
+        originalConfig = {
+            interval_minutes: config.interval_minutes,
+            dify_api_key: config.dify_api_key || '',
+            dify_url: config.dify_url || ''
+        };
+        console.log('初始化 originalConfig:', originalConfig);
+    }
+}
+
+// 更新日志表格
+function updateLogsTable(logs) {
+    const tbody = document.querySelector('.table tbody');
+    if (!tbody) return;
+    
+    if (logs.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                    <p class="mt-2">暂无执行日志</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = logs.map(log => {
+        const executeTime = new Date(log.execute_time);
+        const startTime = new Date(log.start_time);
+        const endTime = new Date(log.end_time);
+        
+        return `
+            <tr>
+                <td>${executeTime.toLocaleString()}</td>
+                <td>
+                    <small>
+                        ${startTime.toLocaleTimeString()} - 
+                        ${endTime.toLocaleTimeString()}
+                    </small>
+                </td>
+                <td>${log.interval_minutes}</td>
+                <td>
+                    <span class="badge ${log.status === 'success' ? 'bg-success' : 'bg-danger'}">
+                        ${log.status === 'success' ? '成功' : '失败'}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info" 
+                            onclick="showLogDetail(${log.id})">
+                        详情
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// 调整刷新间隔
+function adjustRefreshInterval() {
+    if (!currentConfig) return;
+    
+    let newInterval;
+    
+    if (isNearTaskExecution(currentConfig)) {
+        // 接近执行时间，加速刷新以便及时显示新日志
+        newInterval = 5 * 1000; // 5秒
+    } else {
+        // 正常刷新间隔 = 任务执行间隔，因为只有任务执行时才会产生新日志
+        newInterval = getOptimalRefreshInterval(currentConfig.interval_minutes);
+    }
+    
+    // 如果间隔改变了，重新设置定时器
+    if (refreshInterval && refreshInterval.interval !== newInterval) {
+        stopAutoRefresh();
+        startAutoRefresh(newInterval);
+    }
+}
+
+// 开始自动刷新
+function startAutoRefresh(interval = null) {
+    if (refreshInterval) return; // 已经在刷新了
+    
+    if (!interval && currentConfig) {
+        interval = getOptimalRefreshInterval(currentConfig.interval_minutes);
+    } else if (!interval) {
+        interval = 30 * 1000; // 默认30秒
+    }
+    
+    refreshInterval = {
+        timer: setInterval(refreshPageData, interval),
+        interval: interval
+    };
+    
+    console.log(`开始自动刷新，间隔: ${interval / 1000}秒`);
+}
+
+// 停止自动刷新
+function stopAutoRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval.timer);
+        refreshInterval = null;
+        console.log('停止自动刷新');
+    }
+}
+
+// 页面加载完成后开始刷新
+// 注意：DOMContentLoaded事件监听器已在上方定义，这里不再重复
+
+// 页面卸载时停止刷新
+window.addEventListener('beforeunload', function() {
+    stopAutoRefresh();
+});
+
+// 更新分页控件
+function updateLogsPagination(pagination) {
+    const paginationContainer = document.getElementById('logsPagination');
+    const paginationWrapper = document.getElementById('paginationWrapper');
+    const paginationStats = document.getElementById('paginationStats');
+    
+    if (!paginationContainer || !paginationWrapper || pagination.pages <= 1) {
+        if (paginationWrapper) {
+            paginationWrapper.style.display = 'none';
+        }
+        return;
+    }
+    
+    // 显示分页容器
+    paginationWrapper.style.display = 'flex';
+    
+    let paginationHtml = '';
+    
+    // 上一页按钮
+    if (pagination.has_prev) {
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changeLogsPage(${pagination.current_page - 1})">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+        `;
+    } else {
+        paginationHtml += `
+            <li class="page-item disabled">
+                <span class="page-link"><i class="bi bi-chevron-left"></i></span>
+            </li>
+        `;
+    }
+    
+    // 页码按钮
+    const startPage = Math.max(1, pagination.current_page - 2);
+    const endPage = Math.min(pagination.pages, pagination.current_page + 2);
+    
+    if (startPage > 1) {
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changeLogsPage(1)">1</a>
+            </li>
+        `;
+        if (startPage > 2) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === pagination.current_page) {
+            paginationHtml += `
+                <li class="page-item active">
+                    <span class="page-link">${i}</span>
+                </li>
+            `;
+        } else {
+            paginationHtml += `
+                <li class="page-item">
+                    <a class="page-link" href="#" onclick="changeLogsPage(${i})">${i}</a>
+                </li>
+            `;
+        }
+    }
+    
+    if (endPage < pagination.pages) {
+        if (endPage < pagination.pages - 1) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changeLogsPage(${pagination.pages})">${pagination.pages}</a>
+            </li>
+        `;
+    }
+    
+    // 下一页按钮
+    if (pagination.has_next) {
+        paginationHtml += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="changeLogsPage(${pagination.current_page + 1})">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+        `;
+    } else {
+        paginationHtml += `
+            <li class="page-item disabled">
+                <span class="page-link"><i class="bi bi-chevron-right"></i></span>
+            </li>
+        `;
+    }
+    
+    paginationContainer.innerHTML = paginationHtml;
+    
+    // 更新统计信息
+    if (paginationStats) {
+        const start = (pagination.current_page - 1) * pagination.per_page + 1;
+        const end = Math.min(pagination.current_page * pagination.per_page, pagination.total);
+        paginationStats.textContent = `显示第 ${start} - ${end} 条，共 ${pagination.total} 条记录`;
+    }
+}
+
+// 切换日志页面
+async function changeLogsPage(page) {
+    if (page === currentLogsPage) return;
+    
+    currentLogsPage = page;
+    
+    try {
+        // 获取指定页面的日志
+        const response = await axios.get(`/api/logs?page=${page}&per_page=${logsPerPage}`);
+        const logs = response.data.logs;
+        const pagination = response.data;
+        
+        // 更新日志表格
+        updateLogsTable(logs);
+        
+        // 更新分页控件
+        updateLogsPagination(pagination);
+        
+    } catch (error) {
+        console.error('切换页面失败:', error);
+        showAlert('切换页面失败: ' + error.message, 'danger');
+    }
+}
+
+// 显示日志详情
+async function showLogDetail(logId) {
+    try {
+        // 显示加载状态
+        document.getElementById('logDetailContent').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2">正在加载日志详情...</p>
+            </div>
+        `;
+        
+        const modal = new bootstrap.Modal(document.getElementById('logDetailModal'));
+        modal.show();
+        
+        // 获取日志详情
+        const response = await axios.get(`/api/logs`);
+        const logs = response.data.logs;
+        const log = logs.find(l => l.id === logId);
+        
+        if (log) {
+            let content = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>基本信息</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>日志ID:</strong></td><td>${log.id}</td></tr>
+                            <tr><td><strong>执行时间:</strong></td><td>${log.execute_time}</td></tr>
+                            <tr><td><strong>起始时间:</strong></td><td>${log.start_time}</td></tr>
+                            <tr><td><strong>结束时间:</strong></td><td>${log.end_time}</td></tr>
+                            <tr><td><strong>间隔时间:</strong></td><td>${log.interval_minutes} 分钟</td></tr>
+                            <tr><td><strong>执行状态:</strong></td><td>
+                                <span class="badge ${log.status === 'success' ? 'bg-success' : 'bg-danger'}">
+                                    ${log.status === 'success' ? '成功' : '失败'}
+                                </span>
+                            </td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>时间范围</h6>
+                        <p><strong>数据查询范围:</strong><br>
+                        从 ${log.start_time}<br>
+                        到 ${log.end_time}</p>
+                        
+                        <p><strong>执行耗时:</strong><br>
+                        ${((new Date(log.execute_time) - new Date(log.start_time)) / 1000).toFixed(2)} 秒</p>
+                    </div>
+                </div>
+            `;
+            
+            if (log.status === 'success' && log.response_data) {
+                content += `
+                    <hr>
+                    <h6>API响应数据</h6>
+                    <div class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">
+                        <pre class="mb-0"><code>${log.response_data}</code></pre>
+                    </div>
+                `;
+            }
+            
+            if (log.status === 'failed' && log.error_message) {
+                content += `
+                    <hr>
+                    <h6>错误信息</h6>
+                    <div class="alert alert-danger">
+                        <pre class="mb-0">${log.error_message}</pre>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('logDetailContent').innerHTML = content;
+        } else {
+            document.getElementById('logDetailContent').innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 未找到ID为 ${logId} 的日志记录
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        document.getElementById('logDetailContent').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-circle"></i> 加载日志详情失败: ${error.message}
+            </div>
+        `;
+    }
+}
+</script>
+{% endblock %} 

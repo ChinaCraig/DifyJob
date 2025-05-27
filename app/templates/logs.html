@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}执行日志 - Dify任务调度系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-list-ul"></i> 执行日志</h2>
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary">
+        <i class="bi bi-arrow-left"></i> 返回首页
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if logs_pagination.items %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>执行时间</th>
+                        <th>起始时间</th>
+                        <th>结束时间</th>
+                        <th>间隔(分钟)</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs_pagination.items %}
+                    <tr>
+                        <td>{{ log.id }}</td>
+                        <td>{{ log.execute_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>{{ log.start_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>{{ log.end_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>{{ log.interval_minutes }}</td>
+                        <td>
+                            <span class="badge {% if log.status == 'success' %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if log.status == 'success' %}成功{% else %}失败{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info" 
+                                    onclick="showLogDetail({{ log.id }})">
+                                详情
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        {% if logs_pagination.pages > 1 %}
+        <nav aria-label="日志分页">
+            <ul class="pagination justify-content-center">
+                {% if logs_pagination.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('main.logs', page=logs_pagination.prev_num) }}">上一页</a>
+                </li>
+                {% endif %}
+
+                {% for page_num in logs_pagination.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num != logs_pagination.page %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('main.logs', page=page_num) }}">{{ page_num }}</a>
+                        </li>
+                        {% else %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ page_num }}</span>
+                        </li>
+                        {% endif %}
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">…</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if logs_pagination.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('main.logs', page=logs_pagination.next_num) }}">下一页</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <h4 class="mt-3">暂无执行日志</h4>
+            <p>系统还没有执行过任何任务</p>
+            <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                <i class="bi bi-gear"></i> 去配置任务
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 日志详情模态框 -->
+<div class="modal fade" id="logDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">执行日志详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="logDetailContent">
+                <!-- 日志详情内容 -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function showLogDetail(logId) {
+    try {
+        // 显示加载状态
+        document.getElementById('logDetailContent').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2">正在加载日志详情...</p>
+            </div>
+        `;
+        
+        const modal = new bootstrap.Modal(document.getElementById('logDetailModal'));
+        modal.show();
+        
+        // 获取日志详情
+        const response = await axios.get(`/api/logs`);
+        const logs = response.data.logs;
+        const log = logs.find(l => l.id === logId);
+        
+        if (log) {
+            let content = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>基本信息</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>日志ID:</strong></td><td>${log.id}</td></tr>
+                            <tr><td><strong>执行时间:</strong></td><td>${log.execute_time}</td></tr>
+                            <tr><td><strong>起始时间:</strong></td><td>${log.start_time}</td></tr>
+                            <tr><td><strong>结束时间:</strong></td><td>${log.end_time}</td></tr>
+                            <tr><td><strong>间隔时间:</strong></td><td>${log.interval_minutes} 分钟</td></tr>
+                            <tr><td><strong>执行状态:</strong></td><td>
+                                <span class="badge ${log.status === 'success' ? 'bg-success' : 'bg-danger'}">
+                                    ${log.status === 'success' ? '成功' : '失败'}
+                                </span>
+                            </td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>时间范围</h6>
+                        <p><strong>数据查询范围:</strong><br>
+                        从 ${log.start_time}<br>
+                        到 ${log.end_time}</p>
+                        
+                        <p><strong>执行耗时:</strong><br>
+                        ${((new Date(log.execute_time) - new Date(log.start_time)) / 1000).toFixed(2)} 秒</p>
+                    </div>
+                </div>
+            `;
+            
+            if (log.status === 'success' && log.response_data) {
+                content += `
+                    <hr>
+                    <h6>API响应数据</h6>
+                    <div class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">
+                        <pre class="mb-0"><code>${escapeHtml(log.response_data)}</code></pre>
+                    </div>
+                `;
+            }
+            
+            if (log.status === 'failed' && log.error_message) {
+                content += `
+                    <hr>
+                    <h6>错误信息</h6>
+                    <div class="alert alert-danger">
+                        <pre class="mb-0">${escapeHtml(log.error_message)}</pre>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('logDetailContent').innerHTML = content;
+        } else {
+            document.getElementById('logDetailContent').innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 未找到ID为 ${logId} 的日志记录
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        document.getElementById('logDetailContent').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-circle"></i> 加载日志详情失败: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// HTML转义函数
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+</script>
+{% endblock %} 
