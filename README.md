@@ -10,6 +10,8 @@
 - ✅ Web管理界面：简洁美观的任务配置和监控界面
 - ✅ 任务控制：支持启动、停止、立即执行任务
 - ✅ 灵活配置：支持自定义开始时间或使用上次结束时间
+- ✅ 配置化管理：所有配置项统一在config.env文件中管理
+- ✅ 动态配置：前端自动从服务器获取配置参数
 
 ## 系统架构
 
@@ -17,6 +19,7 @@
 WeChatJOB/
 ├── app/                    # 应用主目录
 │   ├── __init__.py        # Flask应用初始化
+│   ├── config.py          # 配置管理模块
 │   ├── models.py          # 数据库模型
 │   ├── routes.py          # 路由定义
 │   ├── services.py        # 业务逻辑服务
@@ -29,8 +32,64 @@ WeChatJOB/
 ├── requirements.txt       # Python依赖
 ├── run.py                # 应用启动文件
 ├── config.env            # 环境变量配置
+├── start.sh              # 启动脚本
+├── verify_config.py      # 配置验证脚本
 └── README.md             # 项目说明
 ```
+
+## 配置管理
+
+### 配置文件说明
+
+所有配置项都在 `config.env` 文件中统一管理，包括：
+
+#### Flask运行配置
+```env
+FLASK_DEBUG=True                    # 调试模式
+FLASK_HOST=0.0.0.0                 # 监听地址
+FLASK_PORT=5001                     # 监听端口
+FLASK_USE_RELOADER=False            # 是否使用重载器
+```
+
+#### 数据库配置
+```env
+DB_HOST=192.168.16.105              # 数据库主机
+DB_PORT=3306                        # 数据库端口
+DB_USER=root                        # 数据库用户名
+DB_PASSWORD=your_password           # 数据库密码
+DB_NAME=wechat_job                  # 数据库名称
+```
+
+#### Dify API配置
+```env
+DIFY_API_URL=http://localhost/v1/workflows/run  # Dify API地址
+DIFY_API_KEY=your-dify-api-key-here            # Dify API密钥
+DIFY_API_TIMEOUT=30                            # API请求超时时间(秒)
+DIFY_USER_IDENTIFIER=wechat-job-system         # API用户标识
+```
+
+#### 系统配置
+```env
+LOG_LEVEL=INFO                      # 日志级别
+LOGS_PER_PAGE_DEFAULT=10            # 默认分页大小
+LOGS_PER_PAGE_MAX=50                # 最大分页大小
+AUTO_REFRESH_INTERVAL_SECONDS=30    # 自动刷新间隔(秒)
+NEAR_EXECUTION_REFRESH_SECONDS=5    # 接近执行时刷新间隔(秒)
+```
+
+### 配置验证
+
+运行配置验证脚本检查所有配置是否正确：
+
+```bash
+python3 verify_config.py
+```
+
+该脚本会验证：
+- 配置文件是否存在
+- 所有配置项是否正确加载
+- Flask应用是否能正常创建
+- API端点是否正常工作
 
 ## 安装部署
 
@@ -56,19 +115,31 @@ mysql -h 192.168.16.105 -P 3306 -u root -p19900114xin < database/create_tables.s
 
 ### 4. 配置环境变量
 
-编辑 `config.env` 文件，配置你的Dify API Key：
+编辑 `config.env` 文件，配置你的参数：
 
 ```env
+# 必须配置的项目
+DB_PASSWORD=your_actual_password
 DIFY_API_KEY=your-actual-dify-api-key
+
+# 可选配置项（有默认值）
+FLASK_PORT=5001
+LOG_LEVEL=INFO
 ```
 
 ### 5. 启动应用
 
+使用启动脚本（推荐）：
 ```bash
-python run.py
+./start.sh
 ```
 
-应用将在 `http://localhost:5001` 启动。
+或直接运行：
+```bash
+python3 run.py
+```
+
+应用将根据配置文件中的设置启动，默认地址：`http://localhost:5001`
 
 ## 使用说明
 

@@ -2,10 +2,11 @@ import requests
 import json
 from datetime import datetime, timedelta
 from app import db, scheduler
+from app.config import Config
 import logging
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.get_log_level())
 logger = logging.getLogger(__name__)
 
 class TaskService:
@@ -26,10 +27,10 @@ class TaskService:
                     "end_time": end_time.strftime('%Y-%m-%d %H:%M:%S')
                 },
                 "response_mode": "streaming",
-                "user": "wechat-job-system"
+                "user": Config.DIFY_USER_IDENTIFIER
             }
             
-            response = requests.post(api_url, headers=headers, json=data, timeout=30)
+            response = requests.post(api_url, headers=headers, json=data, timeout=Config.DIFY_API_TIMEOUT)
             response.raise_for_status()
             
             return True, response.text
@@ -164,8 +165,14 @@ class TaskService:
             logger.error(f"停止任务失败: {str(e)}")
     
     @staticmethod
-    def get_task_logs(page=1, per_page=20):
+    def get_task_logs(page=1, per_page=None):
         """获取任务日志"""
+        if per_page is None:
+            per_page = Config.LOGS_PER_PAGE_DEFAULT
+        
+        # 限制最大分页大小
+        per_page = min(per_page, Config.LOGS_PER_PAGE_MAX)
+        
         from app.models import TaskLog
         return TaskLog.query.order_by(TaskLog.created_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False

@@ -187,8 +187,11 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOMContentLoaded 事件触发');
     
-    // 初始化获取配置并开始自动刷新
-    refreshPageData().then(() => {
+    // 首先加载应用配置
+    loadAppConfig().then(() => {
+        // 然后初始化获取配置并开始自动刷新
+        return refreshPageData();
+    }).then(() => {
         console.log('配置数据加载完成，开始添加事件监听器');
         
         // 在配置加载完成后再添加配置输入框变更监听
@@ -371,9 +374,29 @@ let currentConfig = null;
 let currentLogsPage = 1;
 let logsPerPage = 10;
 
+// 应用配置（从服务器获取）
+let appConfig = {
+    auto_refresh_interval_seconds: 30,
+    near_execution_refresh_seconds: 5,
+    logs_per_page_default: 10,
+    logs_per_page_max: 50
+};
+
 // 配置变更检测
 let originalConfig = null;
 let hasUnsavedChanges = false;
+
+// 加载应用配置
+async function loadAppConfig() {
+    try {
+        const response = await axios.get('/api/app-config');
+        appConfig = response.data;
+        logsPerPage = appConfig.logs_per_page_default;
+        console.log('应用配置加载完成:', appConfig);
+    } catch (error) {
+        console.error('加载应用配置失败:', error);
+    }
+}
 
 // 检查配置是否有未保存的变更
 function checkConfigChanges() {
@@ -438,8 +461,9 @@ function isNearTaskExecution(config) {
     const now = new Date();
     const timeUntilExecution = nextExecutionTime.getTime() - now.getTime();
     
-    // 在任务执行前30秒到执行后10秒之间，进行加速刷新
-    return timeUntilExecution <= 30 * 1000 && timeUntilExecution >= -10 * 1000;
+    // 使用配置中的时间间隔
+    return timeUntilExecution <= appConfig.auto_refresh_interval_seconds * 1000 && 
+           timeUntilExecution >= -10 * 1000;
 }
 
 // 刷新页面数据
@@ -579,7 +603,7 @@ function adjustRefreshInterval() {
     
     if (isNearTaskExecution(currentConfig)) {
         // 接近执行时间，加速刷新以便及时显示新日志
-        newInterval = 5 * 1000; // 5秒
+        newInterval = appConfig.near_execution_refresh_seconds * 1000;
     } else {
         // 正常刷新间隔 = 任务执行间隔，因为只有任务执行时才会产生新日志
         newInterval = getOptimalRefreshInterval(currentConfig.interval_minutes);
@@ -599,7 +623,7 @@ function startAutoRefresh(interval = null) {
     if (!interval && currentConfig) {
         interval = getOptimalRefreshInterval(currentConfig.interval_minutes);
     } else if (!interval) {
-        interval = 30 * 1000; // 默认30秒
+        interval = appConfig.auto_refresh_interval_seconds * 1000; // 使用配置中的默认值
     }
     
     refreshInterval = {

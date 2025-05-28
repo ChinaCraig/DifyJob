@@ -14,12 +14,21 @@ if ! python3 -c "import flask" 2>/dev/null; then
     pip3 install -r requirements.txt
 fi
 
+# 从配置文件读取端口号
+if [ -f "config.env" ]; then
+    FLASK_PORT=$(grep "^FLASK_PORT=" config.env | cut -d'=' -f2)
+    FLASK_HOST=$(grep "^FLASK_HOST=" config.env | cut -d'=' -f2)
+else
+    FLASK_PORT=5001
+    FLASK_HOST=0.0.0.0
+fi
+
 # 设置环境变量
 export FLASK_APP=run.py
 export FLASK_ENV=development
 
 echo "启动应用..."
-echo "访问地址: http://localhost:5001"
+echo "访问地址: http://${FLASK_HOST}:${FLASK_PORT}"
 echo "按 Ctrl+C 停止应用"
 echo "========================"
 

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from app import db
 from app.models import TaskLog, TaskConfig
 from app.services import TaskService
+from app.config import Config
 
 main = Blueprint('main', __name__)
 
@@ -13,7 +14,7 @@ def index():
     
     # 获取分页参数
     page = request.args.get('page', 1, type=int)
-    per_page = 10  # 首页固定每页10条
+    per_page = Config.LOGS_PER_PAGE_DEFAULT  # 使用配置文件中的默认值
     
     # 获取最近的日志
     logs_pagination = TaskService.get_task_logs(page=page, per_page=per_page)
@@ -25,7 +26,8 @@ def index():
 def logs():
     """日志页面"""
     page = request.args.get('page', 1, type=int)
-    logs_pagination = TaskService.get_task_logs(page=page, per_page=20)
+    per_page = request.args.get('per_page', Config.LOGS_PER_PAGE_DEFAULT * 2, type=int)  # 日志页面默认显示更多
+    logs_pagination = TaskService.get_task_logs(page=page, per_page=per_page)
     
     return render_template('logs.html', logs_pagination=logs_pagination)
 
@@ -130,12 +132,12 @@ def execute_task_now():
 def get_logs():
     """获取日志API"""
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+    per_page = request.args.get('per_page', Config.LOGS_PER_PAGE_DEFAULT, type=int)
     limit = request.args.get('limit', type=int)  # 新增limit参数
     
     # 如果指定了limit，则使用limit而不是分页
     if limit:
-        per_page = limit
+        per_page = min(limit, Config.LOGS_PER_PAGE_MAX)  # 限制最大值
         page = 1
     
     logs_pagination = TaskService.get_task_logs(page=page, per_page=per_page)
@@ -148,4 +150,14 @@ def get_logs():
         'per_page': per_page,
         'has_next': logs_pagination.has_next,
         'has_prev': logs_pagination.has_prev
+    })
+
+@main.route('/api/app-config')
+def get_app_config():
+    """获取应用配置（供前端使用）"""
+    return jsonify({
+        'auto_refresh_interval_seconds': Config.AUTO_REFRESH_INTERVAL_SECONDS,
+        'near_execution_refresh_seconds': Config.NEAR_EXECUTION_REFRESH_SECONDS,
+        'logs_per_page_default': Config.LOGS_PER_PAGE_DEFAULT,
+        'logs_per_page_max': Config.LOGS_PER_PAGE_MAX
     }) 
