@@ -51,8 +51,9 @@ class TaskService:
         cls._app = app
     
     @staticmethod
-    def execute_task():
+    def execute_task(force=False):
         """执行定时任务"""
+        logger.info("execute_task 被调用")
         app = TaskService._app
         if not app:
             logger.error("应用实例未设置")
@@ -63,9 +64,18 @@ class TaskService:
                 from app.models import TaskLog, TaskConfig
                 # 获取任务配置
                 config = TaskConfig.query.first()
-                if not config or not config.is_active:
+                logger.info(f"获取到配置: config={config}, is_active={config.is_active if config else None}")
+                
+                if not config:
+                    logger.info("配置不存在")
+                    return
+                
+                # 如果不是强制执行，检查任务是否启用
+                if not force and not config.is_active:
                     logger.info("任务未启用或配置不存在")
                     return
+                
+                logger.info("开始执行任务...")
                 
                 # 计算时间范围
                 if config.last_end_time:
@@ -75,6 +85,8 @@ class TaskService:
                 
                 end_time = start_time + timedelta(minutes=config.interval_minutes)
                 execute_time = datetime.now()
+                
+                logger.info(f"时间范围: {start_time} -> {end_time}")
                 
                 # 调用Dify API
                 success, response_data = TaskService.call_dify_api(
@@ -126,7 +138,7 @@ class TaskService:
                 TaskService.schedule_task(config.interval_minutes)
     
     @staticmethod
-    def schedule_task(interval_minutes, start_time=None):
+    def schedule_task(interval_minutes):
         """调度任务"""
         try:
             # 移除现有的任务
@@ -137,22 +149,30 @@ class TaskService:
             if scheduler.get_job('dify_task_initial'):
                 scheduler.remove_job('dify_task_initial')
             
-            # 总是立即开始执行，指定开始时间只影响数据查询范围
+            # 立即执行第一次任务（稍微延迟一点确保数据库事务完成）
+            scheduler.add_job(
+                func=TaskService.execute_task,
+                trigger='date',
+                run_date=datetime.now() + timedelta(seconds=1),
+                id='dify_task_initial',
+                replace_existing=True
+            )
+            
+            # 然后按间隔重复执行
             scheduler.add_job(
                 func=TaskService.execute_task,
                 trigger='interval',
                 minutes=interval_minutes,
+                start_date=datetime.now() + timedelta(minutes=interval_minutes),
                 id='dify_task',
                 replace_existing=True
             )
-            logger.info(f"任务已调度，立即开始执行，间隔: {interval_minutes} 分钟")
+            logger.info(f"任务已调度，1秒后执行第一次，然后每 {interval_minutes} 分钟执行一次")
             
         except Exception as e:
             logger.error(f"任务调度失败: {str(e)}")
             import traceback
             logger.error(f"调度失败详细错误: {traceback.format_exc()}")
-    
-
     
     @staticmethod
     def stop_task():
@@ -160,7 +180,11 @@ class TaskService:
         try:
             if scheduler.get_job('dify_task'):
                 scheduler.remove_job('dify_task')
-                logger.info("任务已停止")
+                logger.info("重复任务已停止")
+            if scheduler.get_job('dify_task_initial'):
+                scheduler.remove_job('dify_task_initial')
+                logger.info("一次性任务已停止")
+            logger.info("所有任务已停止")
         except Exception as e:
             logger.error(f"停止任务失败: {str(e)}")
     

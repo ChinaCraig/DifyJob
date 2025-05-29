@@ -64,7 +64,7 @@
                 <div class="mb-3">
                     <label for="startTime" class="form-label">指定开始时间 (可选)</label>
                     <input type="datetime-local" class="form-control" id="startTime">
-                    <div class="form-text">留空则使用最后结束时间作为开始时间</div>
+                    <div class="form-text">指定业务数据的起始时间。留空则从上次结束时间开始，如果没有历史记录则从当前时间前一个间隔开始。注意：此时间不影响定时任务的调度，任务会立即执行第一次然后按间隔重复。</div>
                 </div>
 
                 <div class="btn-group-sm" role="group">
@@ -118,11 +118,11 @@
                         <tbody>
                             {% for log in logs %}
                             <tr>
-                                <td>{{ log.execute_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>{{ log.execute_time.strftime('%Y/%m/%d %H:%M:%S') }}</td>
                                 <td>
                                     <small>
-                                        {{ log.start_time.strftime('%H:%M:%S') }} - 
-                                        {{ log.end_time.strftime('%H:%M:%S') }}
+                                        {{ log.start_time.strftime('%Y/%m/%d %H:%M:%S') }} - 
+                                        {{ log.end_time.strftime('%Y/%m/%d %H:%M:%S') }}
                                     </small>
                                 </td>
                                 <td>{{ log.interval_minutes }}</td>
@@ -290,11 +290,13 @@ document.getElementById('startTaskBtn').addEventListener('click', function() {
             .then(function(response) {
                 console.log('启动任务响应:', response.data);
                 if (response.data.success) {
-                    showAlert('任务启动成功', 'success');
+                    showAlert('任务启动成功，正在执行第一次任务...', 'success');
                     // 立即刷新一次数据
                     refreshPageData();
-                    // 1秒后重新加载页面以确保状态同步
-                    setTimeout(() => location.reload(), 1000);
+                    // 设置短期频繁刷新以捕获第一次执行的结果
+                    startFrequentRefresh();
+                    // 3秒后重新加载页面以确保状态同步
+                    setTimeout(() => location.reload(), 3000);
                 } else {
                     showAlert('任务启动失败: ' + response.data.message, 'danger');
                 }
@@ -318,8 +320,10 @@ document.getElementById('stopTaskBtn').addEventListener('click', async () => {
             showAlert('任务停止成功', 'success');
             // 立即刷新一次数据
             refreshPageData();
-            // 1秒后重新加载页面以确保状态同步
-            setTimeout(() => location.reload(), 1000);
+            // 停止频繁刷新（如果正在进行）
+            stopFrequentRefresh();
+            // 2秒后重新加载页面以确保状态同步
+            setTimeout(() => location.reload(), 2000);
         } else {
             showAlert('任务停止失败: ' + response.data.message, 'danger');
         }
@@ -350,8 +354,10 @@ document.getElementById('executeNowBtn').addEventListener('click', function() {
                     showAlert('任务执行完成', 'success');
                     // 立即刷新一次数据
                     refreshPageData();
-                    // 2秒后重新加载页面以确保状态同步
-                    setTimeout(() => location.reload(), 2000);
+                    // 设置短期频繁刷新以捕获执行结果
+                    startFrequentRefresh();
+                    // 3秒后重新加载页面以确保状态同步
+                    setTimeout(() => location.reload(), 3000);
                 } else {
                     showAlert('任务执行失败: ' + response.data.message, 'danger');
                 }
@@ -569,13 +575,24 @@ function updateLogsTable(logs) {
         const startTime = new Date(log.start_time);
         const endTime = new Date(log.end_time);
         
+        // 格式化时间为 yyyy/MM/dd HH:mm:ss
+        const formatDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+        };
+        
         return `
             <tr>
-                <td>${executeTime.toLocaleString()}</td>
+                <td>${formatDate(executeTime)}</td>
                 <td>
                     <small>
-                        ${startTime.toLocaleTimeString()} - 
-                        ${endTime.toLocaleTimeString()}
+                        ${formatDate(startTime)} - 
+                        ${formatDate(endTime)}
                     </small>
                 </td>
                 <td>${log.interval_minutes}</td>
@@ -640,6 +657,46 @@ function stopAutoRefresh() {
         clearInterval(refreshInterval.timer);
         refreshInterval = null;
         console.log('停止自动刷新');
+    }
+}
+
+// 频繁刷新相关变量
+let frequentRefreshInterval = null;
+let frequentRefreshCount = 0;
+const MAX_FREQUENT_REFRESH_COUNT = 10; // 最多频繁刷新10次
+const FREQUENT_REFRESH_INTERVAL = 2000; // 2秒间隔
+
+// 开始频繁刷新（用于任务操作后短期内捕获日志变化）
+function startFrequentRefresh() {
+    // 如果已经在频繁刷新，先停止
+    stopFrequentRefresh();
+    
+    frequentRefreshCount = 0;
+    
+    frequentRefreshInterval = setInterval(() => {
+        frequentRefreshCount++;
+        console.log(`频繁刷新第 ${frequentRefreshCount} 次`);
+        
+        // 刷新页面数据
+        refreshPageData();
+        
+        // 达到最大次数后停止频繁刷新
+        if (frequentRefreshCount >= MAX_FREQUENT_REFRESH_COUNT) {
+            stopFrequentRefresh();
+            console.log('频繁刷新已达到最大次数，恢复正常刷新');
+        }
+    }, FREQUENT_REFRESH_INTERVAL);
+    
+    console.log(`开始频繁刷新，间隔: ${FREQUENT_REFRESH_INTERVAL / 1000}秒，最多 ${MAX_FREQUENT_REFRESH_COUNT} 次`);
+}
+
+// 停止频繁刷新
+function stopFrequentRefresh() {
+    if (frequentRefreshInterval) {
+        clearInterval(frequentRefreshInterval);
+        frequentRefreshInterval = null;
+        frequentRefreshCount = 0;
+        console.log('停止频繁刷新');
     }
 }
 
