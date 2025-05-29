@@ -1,13 +1,15 @@
 from app import create_app, scheduler
 from app.services import TaskService
 from app.config import Config
+from app.logging_config import setup_logging
 import logging
 
-# 设置日志级别
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# 创建应用实例
 app = create_app()
+
+# 设置日志配置
+setup_logging(app)
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     # 设置应用实例到TaskService
