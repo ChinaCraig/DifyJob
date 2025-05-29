@@ -5,4 +5,5 @@ APScheduler==3.10.4
 requests==2.31.0
 python-dotenv==1.0.0
 Werkzeug==2.3.7
-cryptography>=3.4.8 
+cryptography>=3.4.8
+gunicorn==21.2.0 
