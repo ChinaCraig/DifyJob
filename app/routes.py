@@ -78,22 +78,22 @@ def start_task():
         data = request.get_json()
         config = TaskService.get_or_create_config()
         
-        # 设置开始时间
-        start_time = None
+        # 处理指定开始时间（仅影响业务数据的时间范围）
         if 'start_time' in data and data['start_time']:
-            start_time = datetime.strptime(data['start_time'], '%Y-%m-%d %H:%M:%S')
-            config.last_end_time = start_time
+            # 指定开始时间作为业务数据的起始时间
+            business_start_time = datetime.strptime(data['start_time'], '%Y-%m-%d %H:%M:%S')
+            config.last_end_time = business_start_time
         elif not config.last_end_time:
-            # 如果没有指定开始时间且没有历史结束时间，使用当前时间
-            config.last_end_time = datetime.now()
+            # 如果没有指定开始时间且没有历史结束时间，使用当前时间减去一个间隔作为起始时间
+            config.last_end_time = datetime.now() - timedelta(minutes=config.interval_minutes)
         
         # 启用任务
         config.is_active = True
         config.updated_at = datetime.now()
         db.session.commit()
         
-        # 调度任务，传递开始时间
-        TaskService.schedule_task(config.interval_minutes, start_time)
+        # 调度任务（不传递start_time参数，因为它不影响调度）
+        TaskService.schedule_task(config.interval_minutes)
         
         return jsonify({'success': True, 'message': '任务启动成功'})
         
@@ -123,7 +123,10 @@ def stop_task():
 def execute_task_now():
     """立即执行任务"""
     try:
-        TaskService.execute_task()
+        from flask import current_app
+        # 确保TaskService有正确的应用实例
+        TaskService.set_app(current_app)
+        TaskService.execute_task(force=True)
         return jsonify({'success': True, 'message': '任务执行完成'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
